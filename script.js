@@ -30,7 +30,16 @@ const $ = (id) => document.getElementById(id);
 const showAlert = (msg) => alert(msg);
 
 function hideAll() {
-  ["home", "login", "dashboard", "adminBooks", "userPage", "borrowRequests"].forEach(
+ [
+  "home",
+  "login",
+  "dashboard",
+  "adminBooks",
+  "userPage",
+  "borrowRequests",
+  "borrowedBooksPage"
+]
+  .forEach(
     (id) => {
       const el = $(id);
       if (el) el.style.display = "none";
@@ -40,6 +49,7 @@ function hideAll() {
 
 let booksData = [];
 let currentUser = "Guest User"; // placeholder for user system
+let borrowedBooksData = [];
 let activeBorrows = []; // track up to 5 active borrows
 
 // ===== Real-time Books =====
@@ -78,6 +88,8 @@ function checkUserBorrowedStatus() {
   activeBorrows = []; // reset first
   const q = query(collection(db, "borrowedBooks"), orderBy("timestamp", "desc"));
   onSnapshot(q, (snap) => {
+
+  borrowedBooksData = [];
     const now = new Date();
     activeBorrows = [];
 
@@ -188,21 +200,42 @@ function closeModal() {
 }
 
 // ===== Borrow Book (limit 5) =====
+// ===== Borrow Book =====
 async function borrowBook() {
+
+  const userName = $("borrowUserName").value.trim();
+  const phone = $("borrowPhone").value.trim();
+
+  if (!userName || !phone) {
+    alert("⚠️ Please enter your name and phone number.");
+    return;
+  }
+
   if (activeBorrows.length >= 5) {
-    alert("⚠️ You have reached the limit of 5 borrowed books. Please return one before borrowing again.");
+    alert(
+      "⚠️ You have reached the limit of 5 borrowed books."
+    );
     closeModal();
     return;
   }
 
   const title = $("borrowBtn").dataset.title;
-  const book = booksData.find((b) => b.title === title);
+
+  const book = booksData.find(
+    (b) => b.title === title
+  );
+
   if (!book) return;
 
-  // check if the same book is already borrowed by the user
-  const alreadyBorrowed = activeBorrows.some((b) => b.bookTitle === title);
+  // Check duplicate borrow
+  const alreadyBorrowed = activeBorrows.some(
+    (b) =>
+      b.bookTitle === title &&
+      b.userPhone === phone
+  );
+
   if (alreadyBorrowed) {
-    alert(`⚠️ You have already borrowed "${title}".`);
+    alert(`⚠️ You already borrowed "${title}"`);
     closeModal();
     return;
   }
@@ -212,17 +245,33 @@ async function borrowBook() {
     bookAuthor: book.author,
     bookCategory: book.category,
     bookImage: book.image,
-    userName: currentUser,
+
+    userName: userName,
+    userPhone: phone,
+
     status: "pending",
     borrowDays: null,
     timestamp: new Date().toISOString(),
   };
 
-  await addDoc(collection(db, "borrowRequests"), request);
-  showAlert("📚 Borrow request sent!");
-  closeModal();
-}
+  try {
+    await addDoc(
+      collection(db, "borrowRequests"),
+      request
+    );
 
+    alert("📚 Borrow request sent!");
+
+    $("borrowUserName").value = "";
+    $("borrowPhone").value = "";
+
+    closeModal();
+
+  } catch (err) {
+    console.error(err);
+    alert("Failed to send request.");
+  }
+}
 // ===== Borrow Requests (Admin) =====
 function loadBorrowRequests() {
   const list = $("requestList");
@@ -250,6 +299,8 @@ function loadBorrowRequests() {
         <div class="borrow-info">
           <h3>${r.bookTitle}</h3>
           <p><strong>User:</strong> ${r.userName}</p>
+
+<p><strong>Phone:</strong> ${r.userPhone}</p>
           <p><strong>Status:</strong>
             <span class="status-badge status-${r.status}">
               ${r.status.charAt(0).toUpperCase() + r.status.slice(1)}
@@ -441,3 +492,188 @@ async function toggleFavorite() {
   }
 }
 window.toggleFavorite = toggleFavorite;
+// ================= BORROWED BOOKS MANAGEMENT =================
+
+import {
+  updateDoc
+} from "https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+
+// Open Borrowed Books Page
+function openBorrowedBooks() {
+  hideAll();
+  $("borrowedBooksPage").style.display = "block";
+  loadBorrowedBooks();
+}
+
+// Load Borrowed Books
+function loadBorrowedBooks() {
+  const list = $("borrowedBooksList");
+
+  if (!list) return;
+
+  list.innerHTML = `
+    <p style="text-align:center;color:white;">
+      Loading borrowed books...
+    </p>
+  `;
+
+  const q = query(
+    collection(db, "borrowedBooks"),
+    orderBy("timestamp", "desc")
+  );
+
+  onSnapshot(q, (snap) => {
+    list.innerHTML = "";
+
+    if (snap.empty) {
+      list.innerHTML = `
+        <p style="text-align:center;color:white;">
+          No borrowed books found.
+        </p>
+      `;
+      return;
+    }
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      borrowedBooksData.push({
+  id: docSnap.id,
+  ...data
+});
+      const id = docSnap.id;
+
+      // Skip denied books
+      if (data.status === "denied") return;
+
+      const borrowDate = new Date(data.timestamp);
+      const dueDate = new Date(borrowDate);
+
+      dueDate.setDate(
+        dueDate.getDate() + (data.borrowDays || 0)
+      );
+
+      const today = new Date();
+
+      let fine = 0;
+
+      if (today > dueDate) {
+        const lateDays = Math.floor(
+          (today - dueDate) / (1000 * 60 * 60 * 24)
+        );
+
+        fine = lateDays * 10; // ₹10 per late day
+      }
+
+      const returned = data.returned || false;
+
+      const div = document.createElement("div");
+
+      div.className = "borrow-card";
+
+      div.innerHTML = `
+        <img src="${data.bookImage}" class="borrow-img">
+
+        <div class="borrow-info">
+          <h3>${data.bookTitle}</h3>
+
+          <p><strong>User:</strong> ${data.userName}</p>
+
+<p><strong>Phone:</strong> ${data.userPhone}</p>
+
+          <p><strong>Borrow Days:</strong> ${data.borrowDays || 0}</p>
+
+          <p><strong>Due Date:</strong> ${dueDate.toDateString()}</p>
+
+          <p>
+            <strong>Fine:</strong>
+            ₹${fine}
+          </p>
+
+          <p>
+            <strong>Status:</strong>
+
+            ${
+              returned
+                ? `<span class="status-badge status-approved">Returned</span>`
+                : `<span class="status-badge status-pending">Borrowed</span>`
+            }
+          </p>
+
+          ${
+            !returned
+              ? `
+            <div class="borrow-actions">
+              <button class="approve-btn return-btn">
+                ✅ Mark Returned
+              </button>
+            </div>
+          `
+              : ""
+          }
+        </div>
+      `;
+
+      // Return button
+      const returnBtn = div.querySelector(".return-btn");
+
+      if (returnBtn) {
+        returnBtn.onclick = async () => {
+          try {
+            await updateDoc(
+              doc(db, "borrowedBooks", id),
+              {
+                returned: true,
+                fineAmount: fine,
+                returnedAt: new Date().toISOString(),
+              }
+            );
+
+            alert(
+              `Book marked returned.\nFine: ₹${fine}`
+            );
+          } catch (err) {
+            console.error(err);
+            alert("Failed to update return.");
+          }
+        };
+      }
+
+      list.appendChild(div);
+    });
+  });
+}
+// ===== SEARCH BORROWED BOOKS =====
+
+function searchBorrowedBooks() {
+
+  const value =
+    $("borrowedSearch")
+      .value
+      .toLowerCase();
+
+  const cards =
+    document.querySelectorAll(
+      "#borrowedBooksList .borrow-card"
+    );
+
+  cards.forEach((card) => {
+
+    const text =
+      card.textContent.toLowerCase();
+
+    if (text.includes(value)) {
+
+      card.style.display = "flex";
+
+    } else {
+
+      card.style.display = "none";
+    }
+  });
+}
+
+window.searchBorrowedBooks =
+  searchBorrowedBooks;
+
+// Make global
+window.openBorrowedBooks = openBorrowedBooks;
