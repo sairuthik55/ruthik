@@ -61,6 +61,11 @@
           <h3>➕ Add Book</h3>
           <p>Add new books with details</p>
         </button>
+       
+        <button class="dashboard-card borrow" onclick="openBorrowedBooks()">
+  <h3>📖 Borrowed Books</h3>
+  <p>Manage returns and fines</p>
+</button>
 
         <button class="dashboard-card borrow" onclick="openBorrowRequests()">
           <h3>📩 Borrow Requests <span id="requestCount" class="request-count">0</span></h3>
@@ -142,6 +147,21 @@
       <h3 id="modalBookTitle"></h3>
       <p id="modalBookAuthor"></p>
       <p id="modalBookCategory"></p>
+       
+      <div class="borrow-user-box">
+  <input
+    type="text"
+    id="borrowUserName"
+    placeholder="Enter Your Name"
+  />
+
+  <input
+    type="tel"
+    id="borrowPhone"
+    placeholder="Enter Phone Number"
+  />
+</div>
+
       <button id="borrowBtn" class="borrow-btn" onclick="borrowBook()">📚 Borrow Book</button>
       <button id="favBtn" class="borrow-btn" onclick="toggleFavorite()">❤️ Add to Favorites</button>
 
@@ -170,7 +190,25 @@
       <button class="back-btn" onclick="backToDashboard()">⬅ Back to Dashboard</button>
     </div>
   </section>
+<!-- ================= BORROWED BOOKS ================= -->
+<section id="borrowedBooksPage" class="borrow-requests">
+  <div class="borrow-container">
+    <h2>📚 Borrowed Books</h2>
+    <input
+  type="text"
+  id="borrowedSearch"
+  placeholder="🔍 Search by book, user, or phone..."
+  oninput="searchBorrowedBooks()"
+  class="borrow-search"
+/>
 
+    <div id="borrowedBooksList" class="borrow-list"></div>
+
+    <button class="back-btn" onclick="backToDashboard()">
+      ⬅ Back to Dashboard
+    </button>
+  </div>
+</section>
   <!-- ================= INTRO VIDEO ================= -->
   <div class="intro" id="intro">
     <video id="introVideo" autoplay muted playsinline>
